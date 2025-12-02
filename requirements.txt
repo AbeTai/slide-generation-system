@@ -1,0 +1,5 @@
+anthropic>=0.73.0
+python-dotenv>=0.9.9
+python-pptx>=1.0.2
+streamlit>=1.51.0
+PyMuPDF>=1.23.0
