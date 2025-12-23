@@ -786,18 +786,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pdf2image"
-version = "1.17.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pillow" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/00/d8/b280f01045555dc257b8153c00dee3bc75830f91a744cd5f84ef3a0a64b1/pdf2image-1.17.0.tar.gz", hash = "sha256:eaa959bc116b420dd7ec415fcae49b98100dda3dd18cd2fdfa86d09f112f6d57", size = 12811 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/33/61766ae033518957f877ab246f87ca30a85b778ebaad65b7f74fa7e52988/pdf2image-1.17.0-py3-none-any.whl", hash = "sha256:ecdd58d7afb810dffe21ef2b1bbc057ef434dabbac6c33778a38a3f7744a27e2", size = 11618 },
-]
-
-[[package]]
 name = "pillow"
 version = "12.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1306,7 +1294,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "dotenv" },
     { name = "google-genai" },
-    { name = "pdf2image" },
+    { name = "pillow" },
     { name = "pymupdf" },
     { name = "python-pptx" },
     { name = "streamlit" },
@@ -1317,7 +1305,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.73.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "google-genai", specifier = ">=1.56.0" },
-    { name = "pdf2image", specifier = ">=1.17.0" },
+    { name = "pillow", specifier = ">=10.0.0" },
     { name = "pymupdf", specifier = ">=1.23.0" },
     { name = "python-pptx", specifier = ">=1.0.2" },
     { name = "streamlit", specifier = ">=1.51.0" },

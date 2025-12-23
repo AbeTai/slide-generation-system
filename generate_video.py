@@ -81,10 +81,16 @@ class VideoGenerator:
                 # ディレクトリはスキップ
                 if name.endswith('/'):
                     continue
+                # macOSのメタデータフォルダをスキップ
+                if '__MACOSX' in name:
+                    continue
+                # 隠しファイルをスキップ
+                basename = os.path.basename(name)
+                if basename.startswith('.'):
+                    continue
                 # JPEG/JPGファイルのみ対象
                 if name.lower().endswith(('.jpeg', '.jpg')):
                     # ファイル名から数字を抽出
-                    basename = os.path.basename(name)
                     match = re.search(r'(\d+)', basename)
                     if match:
                         num = int(match.group(1))
