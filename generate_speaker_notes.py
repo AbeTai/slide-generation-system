@@ -138,57 +138,107 @@ class SpeakerNotesGenerator:
         
         prs.save(output_path)
 
-    def process_pptx(self, input_pptx_path: str, output_pptx_path: str, 
-                     progress_callback=None) -> Tuple[bool, str, List[str]]:
+    def process_pptx_with_pdf(self, input_pptx_path: str, input_pdf_path: str,
+                              output_pptx_path: str, progress_callback=None) -> Tuple[bool, str, List[str]]:
         """
-        PPTXファイル全体を処理して発表者ノートを生成
-        
+        PPTXファイルとPDFファイルから発表者ノートを生成
+        （PPTX→PDF変換をスキップ）
+
         Args:
             input_pptx_path: 入力PPTXファイルのパス
+            input_pdf_path: 入力PDFファイルのパス（スライドの画像抽出用）
             output_pptx_path: 出力PPTXファイルのパス
             progress_callback: 進捗コールバック関数 (step_name, current, total)
-            
+
         Returns:
             Tuple[bool, str, List[str]]: (成功フラグ, メッセージ, 生成された原稿リスト)
         """
         notes_list = []
-        
+
+        try:
+            # 1. PDF → 画像変換
+            if progress_callback:
+                progress_callback("PDF → 画像変換中...", 0, 3)
+
+            images = self.pdf_to_images(input_pdf_path)
+            total_slides = len(images)
+
+            # 2. 各スライドの原稿生成
+            if progress_callback:
+                progress_callback(f"スライド原稿生成中...", 1, 3)
+
+            for i, image_data in enumerate(images):
+                print(f"スライド {i+1}/{total_slides} の原稿を生成中...")
+                script = self.generate_script_from_image(image_data, i+1)
+                notes_list.append(script)
+
+            # 3. PPTXに発表者ノート追加
+            if progress_callback:
+                progress_callback("PPTX ファイル更新中...", 2, 3)
+
+            self.add_notes_to_pptx(input_pptx_path, notes_list, output_pptx_path)
+
+            if progress_callback:
+                progress_callback("完了", 3, 3)
+
+            return True, f"発表者ノート生成完了！ {total_slides}枚のスライドを処理しました。", notes_list
+
+        except Exception as e:
+            error_msg = f"処理中にエラーが発生しました: {str(e)}"
+            print(error_msg)
+            return False, error_msg, notes_list
+
+    def process_pptx(self, input_pptx_path: str, output_pptx_path: str,
+                     progress_callback=None) -> Tuple[bool, str, List[str]]:
+        """
+        PPTXファイル全体を処理して発表者ノートを生成
+
+        Args:
+            input_pptx_path: 入力PPTXファイルのパス
+            output_pptx_path: 出力PPTXファイルのパス
+            progress_callback: 進捗コールバック関数 (step_name, current, total)
+
+        Returns:
+            Tuple[bool, str, List[str]]: (成功フラグ, メッセージ, 生成された原稿リスト)
+        """
+        notes_list = []
+
         try:
             # 1. PPTX → PDF変換
             if progress_callback:
                 progress_callback("PPTX → PDF変換中...", 0, 4)
-            
+
             with tempfile.TemporaryDirectory() as temp_dir:
                 pdf_path = os.path.join(temp_dir, "slides.pdf")
                 self.pptx_reader.pptx_to_pdf(input_pptx_path, pdf_path)
-                
+
                 # 2. PDF → 画像変換
                 if progress_callback:
                     progress_callback("PDF → 画像変換中...", 1, 4)
-                
+
                 images = self.pdf_to_images(pdf_path)
                 total_slides = len(images)
-                
+
                 # 3. 各スライドの原稿生成
                 if progress_callback:
                     progress_callback(f"スライド原稿生成中...", 2, 4)
-                
+
                 for i, image_data in enumerate(images):
                     print(f"スライド {i+1}/{total_slides} の原稿を生成中...")
                     script = self.generate_script_from_image(image_data, i+1)
                     notes_list.append(script)
-                
+
                 # 4. PPTXに発表者ノート追加
                 if progress_callback:
                     progress_callback("PPTX ファイル更新中...", 3, 4)
-                
+
                 self.add_notes_to_pptx(input_pptx_path, notes_list, output_pptx_path)
-                
+
                 if progress_callback:
                     progress_callback("完了", 4, 4)
-                
+
                 return True, f"発表者ノート生成完了！ {total_slides}枚のスライドを処理しました。", notes_list
-                
+
         except subprocess.CalledProcessError as e:
             error_msg = f"LibreOfficeでのPDF変換に失敗しました: {e}"
             print(error_msg)
