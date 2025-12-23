@@ -6,6 +6,7 @@ from generate_outline import generate_outline_from_text
 from outline_to_json import convert_outline_to_json
 from generate_slides import create_slides_from_json
 from generate_speaker_notes import SpeakerNotesGenerator
+from generate_video import VideoGenerator
 
 # ページ設定
 st.set_page_config(
@@ -24,6 +25,13 @@ with st.sidebar:
         type="password",
         value=os.environ.get("ANTHROPIC_API_KEY", ""),
         help="Claude APIを使用するためのAPIキーを入力してください"
+    )
+
+    google_api_key = st.text_input(
+        "Google APIキー",
+        type="password",
+        value=os.environ.get("GOOGLE_API_KEY", ""),
+        help="講義動画生成に使用（Gemini TTS）"
     )
     
     # st.divider()
@@ -46,7 +54,12 @@ with st.sidebar:
     template_path = "スライドテンプレ.pptx"
 
 # タブを作成
-tab1, tab2, tab3 = st.tabs(["📝 Step 1: アウトライン生成", "🎯 Step 2: スライド生成", "📢 Step 3: 発表者ノート生成"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📝 Step 1: アウトライン生成",
+    "🎯 Step 2: スライド生成",
+    "📢 Step 3: 発表者ノート生成",
+    "🎬 Step 4: 講義動画生成"
+])
 
 # ========================================
 # タブ1: テキスト → アウトライン生成
@@ -406,6 +419,144 @@ with tab3:
     - 処理には数分かかる場合があります（スライド数に依存）
     - 生成された原稿は目安として使用し、必要に応じて手動で調整してください
     - 大きなファイル（30MB超）は処理に時間がかかる場合があります
+    """)
+
+# ========================================
+# タブ4: 講義動画生成
+# ========================================
+with tab4:
+    st.header("Step 4: 発表者ノートから講義動画生成")
+    st.markdown("""
+    発表者ノート付きのPowerPointとPDFファイルをアップロードして、発表者ノートを読み上げる講義動画を自動生成します。
+
+    💡 **処理の流れ:**
+    1. PPTXから発表者ノートを抽出
+    2. PDFから各スライド画像を抽出
+    3. 発表者ノートをGemini TTSで音声に変換
+    4. スライド画像と音声を合成して動画作成
+    5. 全スライドの動画を結合して最終動画を生成
+    """)
+
+    # ファイルアップロード
+    col_pptx_v, col_pdf_v = st.columns(2)
+
+    with col_pptx_v:
+        video_pptx = st.file_uploader(
+            "PowerPointファイル（発表者ノート付き）",
+            type=['pptx'],
+            help="発表者ノートが含まれたPowerPointファイルをアップロードしてください",
+            key="video_pptx"
+        )
+
+    with col_pdf_v:
+        video_pdf = st.file_uploader(
+            "PDFファイル",
+            type=['pdf'],
+            help="スライド画像抽出用のPDFファイルをアップロードしてください",
+            key="video_pdf"
+        )
+
+    if video_pptx and video_pdf:
+        # ファイル情報を表示
+        pptx_size_mb = len(video_pptx.getvalue()) / (1024 * 1024)
+        pdf_size_mb = len(video_pdf.getvalue()) / (1024 * 1024)
+        st.info(f"📎 PPTX: {video_pptx.name} ({pptx_size_mb:.1f} MB) | PDF: {video_pdf.name} ({pdf_size_mb:.1f} MB)")
+
+        # 動画生成ボタン
+        if st.button("🎬 講義動画生成", use_container_width=True, type="primary"):
+            if not google_api_key:
+                st.error("❌ Google APIキーを設定してください（サイドバー）")
+            else:
+                try:
+                    # 一時ファイルに保存
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp_pptx:
+                        tmp_pptx.write(video_pptx.getvalue())
+                        input_pptx_path = tmp_pptx.name
+
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+                        tmp_pdf.write(video_pdf.getvalue())
+                        input_pdf_path = tmp_pdf.name
+
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_output:
+                        output_video_path = tmp_output.name
+
+                    # 進捗表示用のプレースホルダー
+                    video_progress_placeholder = st.empty()
+                    video_progress_bar = st.progress(0)
+                    video_status_placeholder = st.empty()
+
+                    # 進捗コールバック関数
+                    def update_video_progress(step_name, current, total):
+                        progress = current / total if total > 0 else 0
+                        video_progress_bar.progress(progress)
+                        video_status_placeholder.text(f"[{current}/{total}] {step_name}")
+
+                    # 動画生成を実行
+                    generator = VideoGenerator(google_api_key)
+
+                    success, message = generator.generate_video(
+                        input_pptx_path, input_pdf_path, output_video_path,
+                        progress_callback=update_video_progress
+                    )
+
+                    if success:
+                        # 生成された動画を読み込み
+                        with open(output_video_path, 'rb') as f:
+                            video_data = f.read()
+
+                        st.success(message)
+
+                        # 動画プレビュー
+                        st.video(video_data)
+
+                        # ダウンロードボタン
+                        video_filename = os.path.splitext(video_pptx.name)[0] + "_lecture.mp4"
+                        st.download_button(
+                            label="💾 講義動画をダウンロード",
+                            data=video_data,
+                            file_name=video_filename,
+                            mime="video/mp4",
+                            use_container_width=True
+                        )
+
+                    else:
+                        st.error(f"❌ エラー: {message}")
+
+                    # 一時ファイルを削除
+                    try:
+                        os.unlink(input_pptx_path)
+                        os.unlink(input_pdf_path)
+                        os.unlink(output_video_path)
+                    except:
+                        pass
+
+                    # 進捗表示をクリア
+                    video_progress_placeholder.empty()
+                    video_progress_bar.empty()
+                    video_status_placeholder.empty()
+
+                except Exception as e:
+                    st.error(f"❌ 処理中にエラーが発生しました: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+
+    else:
+        if not video_pptx and not video_pdf:
+            st.info("👆 PowerPointファイルとPDFファイルをアップロードして開始してください")
+        elif not video_pptx:
+            st.warning("⚠️ PowerPointファイルをアップロードしてください")
+        elif not video_pdf:
+            st.warning("⚠️ PDFファイルをアップロードしてください")
+
+    # 注意事項
+    st.divider()
+    st.markdown("**⚠️ 注意事項:**")
+    st.markdown("""
+    - 発表者ノート付きのPPTXファイルが必要です（Step 3で生成したものを使用してください）
+    - PDFファイルはPPTXと同じスライドの内容である必要があります
+    - 発表者ノートがないスライドは3秒間の無音表示になります
+    - 処理にはスライド枚数に応じて時間がかかります（1枚あたり約10-20秒）
+    - ffmpegとpopplerがシステムにインストールされている必要があります
     """)
 
 # フッター

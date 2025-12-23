@@ -80,8 +80,8 @@ class SpeakerNotesGenerator:
         prompt = f"""このスライド（{slide_number}ページ目）の内容を元に、発表者向けの詳しい原稿を日本語で作成してください。
 
 要件:
-- 聞き手にとって分かりやすい説明になるよう、具体例や補足説明を含める
-- スライドに書かれていない背景情報や詳細説明も追加する
+- 社内講義なので、過度に畏まった言い回しはしない。
+- スライドに書かれている内容のみ参考にし、それ以外の内容を勝手に追加しない
 - 自然な話し言葉で、実際の発表で使いやすい形式にする
 - 2-3分程度で話せる分量（400-600文字程度）にする
 - スライドの内容を単純に読み上げるのではなく、聞き手に分かりやすく説明する
@@ -91,7 +91,7 @@ class SpeakerNotesGenerator:
 
         try:
             message = self.client.messages.create(
-                model="claude-sonnet-4-5-20250929",
+                model="claude-sonnet-4-5",
                 max_tokens=4000,
                 messages=[{
                     "role": "user",
@@ -158,28 +158,28 @@ class SpeakerNotesGenerator:
         try:
             # 1. PDF → 画像変換
             if progress_callback:
-                progress_callback("PDF → 画像変換中...", 0, 3)
+                progress_callback("PDF → 画像変換中...", 0, 1)
 
             images = self.pdf_to_images(input_pdf_path)
             total_slides = len(images)
+            total_steps = total_slides + 2  # PDF変換 + スライド枚数 + PPTX更新
 
             # 2. 各スライドの原稿生成
-            if progress_callback:
-                progress_callback(f"スライド原稿生成中...", 1, 3)
-
             for i, image_data in enumerate(images):
+                if progress_callback:
+                    progress_callback(f"スライド原稿生成中... ({i+1}/{total_slides}枚目)", i + 1, total_steps)
                 print(f"スライド {i+1}/{total_slides} の原稿を生成中...")
                 script = self.generate_script_from_image(image_data, i+1)
                 notes_list.append(script)
 
             # 3. PPTXに発表者ノート追加
             if progress_callback:
-                progress_callback("PPTX ファイル更新中...", 2, 3)
+                progress_callback("PPTX ファイル更新中...", total_slides + 1, total_steps)
 
             self.add_notes_to_pptx(input_pptx_path, notes_list, output_pptx_path)
 
             if progress_callback:
-                progress_callback("完了", 3, 3)
+                progress_callback("完了", total_steps, total_steps)
 
             return True, f"発表者ノート生成完了！ {total_slides}枚のスライドを処理しました。", notes_list
 
