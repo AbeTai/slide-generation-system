@@ -427,18 +427,18 @@ with tab3:
 with tab4:
     st.header("Step 4: 発表者ノートから講義動画生成")
     st.markdown("""
-    発表者ノート付きのPowerPointとPDFファイルをアップロードして、発表者ノートを読み上げる講義動画を自動生成します。
+    発表者ノート付きのPowerPointとスライド画像ZIPをアップロードして、発表者ノートを読み上げる講義動画を自動生成します。
 
     💡 **処理の流れ:**
     1. PPTXから発表者ノートを抽出
-    2. PDFから各スライド画像を抽出
+    2. ZIPから各スライド画像を抽出
     3. 発表者ノートをGemini TTSで音声に変換
     4. スライド画像と音声を合成して動画作成
     5. 全スライドの動画を結合して最終動画を生成
     """)
 
     # ファイルアップロード
-    col_pptx_v, col_pdf_v = st.columns(2)
+    col_pptx_v, col_zip_v = st.columns(2)
 
     with col_pptx_v:
         video_pptx = st.file_uploader(
@@ -448,19 +448,19 @@ with tab4:
             key="video_pptx"
         )
 
-    with col_pdf_v:
-        video_pdf = st.file_uploader(
-            "PDFファイル",
-            type=['pdf'],
-            help="スライド画像抽出用のPDFファイルをアップロードしてください",
-            key="video_pdf"
+    with col_zip_v:
+        video_zip = st.file_uploader(
+            "スライド画像ZIP",
+            type=['zip'],
+            help="スライド1.jpeg, スライド2.jpeg... の形式で画像を格納したZIPファイル",
+            key="video_zip"
         )
 
-    if video_pptx and video_pdf:
+    if video_pptx and video_zip:
         # ファイル情報を表示
         pptx_size_mb = len(video_pptx.getvalue()) / (1024 * 1024)
-        pdf_size_mb = len(video_pdf.getvalue()) / (1024 * 1024)
-        st.info(f"📎 PPTX: {video_pptx.name} ({pptx_size_mb:.1f} MB) | PDF: {video_pdf.name} ({pdf_size_mb:.1f} MB)")
+        zip_size_mb = len(video_zip.getvalue()) / (1024 * 1024)
+        st.info(f"📎 PPTX: {video_pptx.name} ({pptx_size_mb:.1f} MB) | ZIP: {video_zip.name} ({zip_size_mb:.1f} MB)")
 
         # 動画生成ボタン
         if st.button("🎬 講義動画生成", use_container_width=True, type="primary"):
@@ -473,9 +473,9 @@ with tab4:
                         tmp_pptx.write(video_pptx.getvalue())
                         input_pptx_path = tmp_pptx.name
 
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
-                        tmp_pdf.write(video_pdf.getvalue())
-                        input_pdf_path = tmp_pdf.name
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_zip:
+                        tmp_zip.write(video_zip.getvalue())
+                        input_zip_path = tmp_zip.name
 
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_output:
                         output_video_path = tmp_output.name
@@ -495,7 +495,7 @@ with tab4:
                     generator = VideoGenerator(google_api_key)
 
                     success, message = generator.generate_video(
-                        input_pptx_path, input_pdf_path, output_video_path,
+                        input_pptx_path, input_zip_path, output_video_path,
                         progress_callback=update_video_progress
                     )
 
@@ -525,7 +525,7 @@ with tab4:
                     # 一時ファイルを削除
                     try:
                         os.unlink(input_pptx_path)
-                        os.unlink(input_pdf_path)
+                        os.unlink(input_zip_path)
                         os.unlink(output_video_path)
                     except:
                         pass
@@ -541,22 +541,22 @@ with tab4:
                     st.code(traceback.format_exc())
 
     else:
-        if not video_pptx and not video_pdf:
-            st.info("👆 PowerPointファイルとPDFファイルをアップロードして開始してください")
+        if not video_pptx and not video_zip:
+            st.info("👆 PowerPointファイルとスライド画像ZIPをアップロードして開始してください")
         elif not video_pptx:
             st.warning("⚠️ PowerPointファイルをアップロードしてください")
-        elif not video_pdf:
-            st.warning("⚠️ PDFファイルをアップロードしてください")
+        elif not video_zip:
+            st.warning("⚠️ スライド画像ZIPをアップロードしてください")
 
     # 注意事項
     st.divider()
     st.markdown("**⚠️ 注意事項:**")
     st.markdown("""
     - 発表者ノート付きのPPTXファイルが必要です（Step 3で生成したものを使用してください）
-    - PDFファイルはPPTXと同じスライドの内容である必要があります
+    - ZIPファイルには「スライド1.jpeg」「スライド2.jpeg」...の形式で画像を格納してください
     - 発表者ノートがないスライドは3秒間の無音表示になります
     - 処理にはスライド枚数に応じて時間がかかります（1枚あたり約10-20秒）
-    - ffmpegとpopplerがシステムにインストールされている必要があります
+    - ffmpegがシステムにインストールされている必要があります
     """)
 
 # フッター

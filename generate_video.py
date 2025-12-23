@@ -1,18 +1,19 @@
 """
 講義動画生成モジュール
-発表者ノート付きPPTXとPDFから、発表者ノートを読み上げる講義動画を生成する
+発表者ノート付きPPTXとスライド画像ZIPから、発表者ノートを読み上げる講義動画を生成する
 """
 
 import os
+import re
 import subprocess
 import tempfile
 import wave
+import zipfile
 from pathlib import Path
 from typing import List, Optional, Tuple, Callable
 
 from PIL import Image
 from pptx import Presentation
-from pdf2image import convert_from_path
 from google import genai
 from google.genai import types
 
@@ -59,18 +60,46 @@ class VideoGenerator:
 
         return speaker_notes
 
-    def extract_images_from_pdf(self, pdf_path: str, dpi: int = 300) -> List[Image.Image]:
+    def extract_images_from_zip(self, zip_path: str) -> List[Image.Image]:
         """
-        PDFから各ページの画像を抽出
+        ZIPファイルからスライド画像を抽出（スライド番号順）
+
+        ファイル名形式: スライド1.jpeg, スライド2.jpeg, ...
 
         Args:
-            pdf_path: PDFファイルのパス
-            dpi: 画像の解像度
+            zip_path: ZIPファイルのパス
 
         Returns:
-            List[Image.Image]: 各ページの画像
+            List[Image.Image]: スライド番号順の画像リスト
         """
-        images = convert_from_path(pdf_path, dpi=dpi)
+        images = []
+
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            # ファイル名からスライド番号を抽出してソート
+            jpeg_files = []
+            for name in zf.namelist():
+                # ディレクトリはスキップ
+                if name.endswith('/'):
+                    continue
+                # JPEG/JPGファイルのみ対象
+                if name.lower().endswith(('.jpeg', '.jpg')):
+                    # ファイル名から数字を抽出
+                    basename = os.path.basename(name)
+                    match = re.search(r'(\d+)', basename)
+                    if match:
+                        num = int(match.group(1))
+                        jpeg_files.append((num, name))
+
+            # スライド番号順にソート
+            jpeg_files.sort(key=lambda x: x[0])
+
+            # 画像を読み込み
+            for _, name in jpeg_files:
+                with zf.open(name) as f:
+                    image = Image.open(f)
+                    image.load()  # メモリに読み込み
+                    images.append(image.copy())
+
         return images
 
     def text_to_speech(self, text: str, output_path: str) -> str:
@@ -228,7 +257,7 @@ class VideoGenerator:
     def generate_video(
         self,
         pptx_path: str,
-        pdf_path: str,
+        zip_path: str,
         output_path: str,
         progress_callback: Optional[Callable[[str, int, int], None]] = None
     ) -> Tuple[bool, str]:
@@ -237,7 +266,7 @@ class VideoGenerator:
 
         Args:
             pptx_path: PPTXファイルのパス（発表者ノート付き）
-            pdf_path: PDFファイルのパス
+            zip_path: スライド画像ZIPファイルのパス
             output_path: 出力動画ファイルのパス
             progress_callback: 進捗コールバック関数 (step_name, current, total)
 
@@ -251,15 +280,18 @@ class VideoGenerator:
 
             speaker_notes = self.extract_speaker_notes(pptx_path)
 
-            # 2. PDFから画像を抽出
+            # 2. ZIPから画像を抽出
             if progress_callback:
-                progress_callback("PDF画像抽出中...", 0, 1)
+                progress_callback("スライド画像抽出中...", 0, 1)
 
-            images = self.extract_images_from_pdf(pdf_path)
+            images = self.extract_images_from_zip(zip_path)
             total_slides = len(images)
 
+            if total_slides == 0:
+                return False, "ZIPファイルにスライド画像が見つかりません（スライド1.jpeg, スライド2.jpeg...の形式で保存してください）"
+
             if len(speaker_notes) != total_slides:
-                return False, f"スライド数が一致しません（PPTX: {len(speaker_notes)}枚, PDF: {total_slides}枚）"
+                return False, f"スライド数が一致しません（PPTX: {len(speaker_notes)}枚, ZIP: {total_slides}枚）"
 
             total_steps = total_slides + 1  # スライド数 + 動画結合
 
@@ -299,6 +331,9 @@ class VideoGenerator:
 
                     video_paths.append(video_path)
 
+                    # メモリ解放
+                    del image
+
                 # 4. 動画を結合
                 if progress_callback:
                     progress_callback("動画結合中...", total_slides + 1, total_steps)
@@ -318,11 +353,12 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 4:
-        print("使用方法: python generate_video.py <input.pptx> <input.pdf> <output.mp4>")
+        print("使用方法: python generate_video.py <input.pptx> <slides.zip> <output.mp4>")
+        print("ZIPファイルには スライド1.jpeg, スライド2.jpeg... の形式で画像を格納してください")
         sys.exit(1)
 
     pptx_file = sys.argv[1]
-    pdf_file = sys.argv[2]
+    zip_file = sys.argv[2]
     output_file = sys.argv[3]
 
     api_key = os.environ.get("GOOGLE_API_KEY")
@@ -335,7 +371,7 @@ if __name__ == "__main__":
 
     generator = VideoGenerator(api_key)
     success, message = generator.generate_video(
-        pptx_file, pdf_file, output_file, progress_callback=print_progress
+        pptx_file, zip_file, output_file, progress_callback=print_progress
     )
 
     print(f"\n結果: {message}")
