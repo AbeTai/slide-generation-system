@@ -3,3 +3,5 @@ python-dotenv>=0.9.9
 python-pptx>=1.0.2
 streamlit>=1.51.0
 PyMuPDF>=1.23.0
+google-genai>=1.0.0
+pdf2image>=1.16.0
