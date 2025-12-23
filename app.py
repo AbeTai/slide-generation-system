@@ -269,28 +269,38 @@ with tab2:
 with tab3:
     st.header("Step 3: 完成スライドから発表者ノート生成")
     st.markdown("""
-    完成済みのPowerPointスライドをアップロードして、各スライドの発表者ノート原稿を自動生成します。
-    
+    完成済みのPowerPointスライドとPDFファイルをアップロードして、各スライドの発表者ノート原稿を自動生成します。
+
     💡 **処理の流れ:**
-    1. PPTXファイルをPDFに変換
-    2. 各ページを画像として抽出
-    3. Claude AIが各スライドの内容を分析
-    4. 発表者向けの詳細な原稿を生成
-    5. 元のPPTXファイルの発表者ノートに追記
+    1. PDFから各ページを画像として抽出
+    2. Claude AIが各スライドの内容を分析
+    3. 発表者向けの詳細な原稿を生成
+    4. PPTXファイルの発表者ノートに追記
     """)
-    
+
     # PPTXファイルのアップロード
-    uploaded_pptx = st.file_uploader(
-        "PowerPointファイルをアップロード",
-        type=['pptx'],
-        help="発表者ノートを生成したいPowerPointファイルをアップロードしてください"
-    )
-    
-    if uploaded_pptx:
+    col_pptx, col_pdf = st.columns(2)
+
+    with col_pptx:
+        uploaded_pptx = st.file_uploader(
+            "PowerPointファイルをアップロード",
+            type=['pptx'],
+            help="発表者ノートを追加したいPowerPointファイルをアップロードしてください"
+        )
+
+    with col_pdf:
+        uploaded_pdf = st.file_uploader(
+            "PDFファイルをアップロード",
+            type=['pdf'],
+            help="スライド画像抽出用のPDFファイルをアップロードしてください"
+        )
+
+    if uploaded_pptx and uploaded_pdf:
         # ファイル情報を表示
-        file_size_mb = len(uploaded_pptx.getvalue()) / (1024 * 1024)
-        st.info(f"📎 ファイル: {uploaded_pptx.name} ({file_size_mb:.1f} MB)")
-        
+        pptx_size_mb = len(uploaded_pptx.getvalue()) / (1024 * 1024)
+        pdf_size_mb = len(uploaded_pdf.getvalue()) / (1024 * 1024)
+        st.info(f"📎 PPTX: {uploaded_pptx.name} ({pptx_size_mb:.1f} MB) | PDF: {uploaded_pdf.name} ({pdf_size_mb:.1f} MB)")
+
         # 発表者ノート生成ボタン
         if st.button("🎤 発表者ノート生成", use_container_width=True, type="primary"):
             if not api_key:
@@ -298,29 +308,33 @@ with tab3:
             else:
                 try:
                     # 一時ファイルに保存
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp_input:
-                        tmp_input.write(uploaded_pptx.getvalue())
-                        input_path = tmp_input.name
-                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp_input_pptx:
+                        tmp_input_pptx.write(uploaded_pptx.getvalue())
+                        input_pptx_path = tmp_input_pptx.name
+
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_input_pdf:
+                        tmp_input_pdf.write(uploaded_pdf.getvalue())
+                        input_pdf_path = tmp_input_pdf.name
+
                     with tempfile.NamedTemporaryFile(delete=False, suffix="_with_notes.pptx") as tmp_output:
                         output_path = tmp_output.name
-                    
+
                     # 進捗表示用のプレースホルダー
                     progress_placeholder = st.empty()
                     progress_bar = st.progress(0)
                     status_placeholder = st.empty()
-                    
+
                     # 進捗コールバック関数
                     def update_progress(step_name, current, total):
                         progress = current / total
                         progress_bar.progress(progress)
                         status_placeholder.text(f"[{current}/{total}] {step_name}")
-                    
+
                     # 発表者ノート生成を実行
                     generator = SpeakerNotesGenerator(api_key)
-                    
-                    success, message, notes_list = generator.process_pptx(
-                        input_path, output_path, progress_callback=update_progress
+
+                    success, message, notes_list = generator.process_pptx_with_pdf(
+                        input_pptx_path, input_pdf_path, output_path, progress_callback=update_progress
                     )
                     
                     if success:
@@ -357,10 +371,11 @@ with tab3:
                     
                     else:
                         st.error(f"❌ エラー: {message}")
-                    
+
                     # 一時ファイルを削除
                     try:
-                        os.unlink(input_path)
+                        os.unlink(input_pptx_path)
+                        os.unlink(input_pdf_path)
                         os.unlink(output_path)
                     except:
                         pass
@@ -374,15 +389,20 @@ with tab3:
                     st.error(f"❌ 処理中にエラーが発生しました: {str(e)}")
                     import traceback
                     st.code(traceback.format_exc())
-    
+
     else:
-        st.info("👆 PowerPointファイルをアップロードして開始してください")
-    
+        if not uploaded_pptx and not uploaded_pdf:
+            st.info("👆 PowerPointファイルとPDFファイルをアップロードして開始してください")
+        elif not uploaded_pptx:
+            st.warning("⚠️ PowerPointファイルをアップロードしてください")
+        elif not uploaded_pdf:
+            st.warning("⚠️ PDFファイルをアップロードしてください")
+
     # 注意事項
     st.divider()
     st.markdown("**⚠️ 注意事項:**")
     st.markdown("""
-    - LibreOfficeが必要です（macOS/Linuxでは通常プリインストール済み）
+    - PPTXファイルとPDFファイルの両方が必要です（同じスライドのPPTXとPDF版を用意してください）
     - 処理には数分かかる場合があります（スライド数に依存）
     - 生成された原稿は目安として使用し、必要に応じて手動で調整してください
     - 大きなファイル（30MB超）は処理に時間がかかる場合があります
