@@ -109,7 +109,13 @@ class VideoGenerator:
 
         return images
 
-    def text_to_speech(self, text: str, output_path: str, max_retries: int = 3) -> str:
+    def text_to_speech(
+        self,
+        text: str,
+        output_path: str,
+        max_retries: int = 3,
+        retry_callback: Optional[Callable[[int, int, str], None]] = None
+    ) -> str:
         """
         Gemini TTSでテキストを音声に変換（リトライ処理付き）
 
@@ -117,6 +123,7 @@ class VideoGenerator:
             text: 読み上げるテキスト
             output_path: 出力WAVファイルのパス
             max_retries: 最大リトライ回数（デフォルト: 3）
+            retry_callback: リトライ時のコールバック関数 (attempt, max_retries, error_message)
 
         Returns:
             str: 出力ファイルのパス
@@ -155,18 +162,28 @@ class VideoGenerator:
 
             except Exception as e:
                 last_exception = e
+                error_msg = str(e)
 
                 # 最後の試行でない場合はリトライ
                 if attempt < max_retries - 1:
                     # 指数バックオフ: 2^attempt秒待機（1秒、2秒、4秒...）
                     wait_time = 2 ** attempt
-                    print(f"API呼び出しエラー (試行 {attempt + 1}/{max_retries}): {str(e)}")
-                    print(f"{wait_time}秒後にリトライします...")
+
+                    # リトライコールバックを呼び出し
+                    if retry_callback:
+                        retry_callback(attempt + 1, max_retries, error_msg)
+                    else:
+                        print(f"API呼び出しエラー (試行 {attempt + 1}/{max_retries}): {error_msg}")
+                        print(f"{wait_time}秒後にリトライします...")
+
                     time.sleep(wait_time)
                 else:
                     # 最後の試行でも失敗した場合
-                    print(f"API呼び出しエラー (試行 {attempt + 1}/{max_retries}): {str(e)}")
-                    print("最大リトライ回数に達しました。")
+                    if retry_callback:
+                        retry_callback(attempt + 1, max_retries, error_msg)
+                    else:
+                        print(f"API呼び出しエラー (試行 {attempt + 1}/{max_retries}): {error_msg}")
+                        print("最大リトライ回数に達しました。")
 
         # すべてのリトライが失敗した場合
         raise Exception(f"音声生成に失敗しました（{max_retries}回試行）: {str(last_exception)}")
@@ -344,9 +361,16 @@ class VideoGenerator:
                                 i + 1, total_steps
                             )
 
-                        # 音声生成
+                        # 音声生成（リトライコールバック付き）
+                        def retry_callback(attempt, max_retries, error_msg):
+                            if progress_callback:
+                                progress_callback(
+                                    f"スライド {slide_num}/{total_slides} - API呼び出しエラー (試行 {attempt}/{max_retries})。リトライ中...",
+                                    i + 1, total_steps
+                                )
+
                         audio_path = os.path.join(temp_dir, f"slide_{slide_num:03d}.wav")
-                        self.text_to_speech(note, audio_path)
+                        self.text_to_speech(note, audio_path, retry_callback=retry_callback)
 
                         # 動画作成
                         video_path = os.path.join(temp_dir, f"slide_{slide_num:03d}.mp4")
