@@ -535,7 +535,7 @@ with tab4:
                     import traceback
                     st.code(traceback.format_exc())
 
-    # 動画プレビューとダウンロードボタン（セッションステートから表示）
+    # ダウンロードボタン（プレビュー無効化版）
     if 'video_file_path' in st.session_state and os.path.exists(st.session_state['video_file_path']):
         st.divider()
         st.subheader("📥 生成された講義動画")
@@ -544,21 +544,25 @@ with tab4:
         file_size_mb = st.session_state.get('video_file_size_mb', 0)
 
         # ファイルサイズ情報を表示
-        st.info(f"📊 ファイルサイズ: {file_size_mb:.1f} MB")
+        st.info(f"📊 ファイルサイズ: {file_size_mb:.1f} MB | 動画の長さ: 約{file_size_mb / 5:.1f}分（推定）")
 
-        # 動画プレビュー（ファイルから読み込み）
-        with open(video_path, 'rb') as f:
-            st.video(f.read())
+        # 大きなファイルの場合の注意事項
+        if file_size_mb > 100:
+            st.warning("⚠️ ファイルサイズが大きいため、ダウンロードに時間がかかる場合があります。ブラウザが応答しなくなった場合は、しばらくお待ちください。")
 
-        # ダウンロードボタン（ファイルから読み込み）
+        # 動画データを読み込んでダウンロードボタンを表示
         with open(video_path, 'rb') as f:
-            st.download_button(
-                label="💾 講義動画をダウンロード",
-                data=f.read(),
-                file_name=st.session_state['video_filename'],
-                mime="video/mp4",
-                use_container_width=True
-            )
+            video_data = f.read()
+
+        st.download_button(
+            label="💾 講義動画をダウンロード",
+            data=video_data,
+            file_name=st.session_state['video_filename'],
+            mime="video/mp4",
+            use_container_width=True
+        )
+
+        st.markdown("💡 **ヒント**: ダウンロード後は、動画プレーヤーで再生して内容を確認してください。")
 
     else:
         if not video_pptx and not video_zip:
