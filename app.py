@@ -477,6 +477,7 @@ with tab4:
                         tmp_zip.write(video_zip.getvalue())
                         input_zip_path = tmp_zip.name
 
+                    # 出力動画ファイル用の一時ファイル（削除せずに保持）
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_output:
                         output_video_path = tmp_output.name
 
@@ -500,33 +501,27 @@ with tab4:
                     )
 
                     if success:
-                        # 生成された動画を読み込み
-                        with open(output_video_path, 'rb') as f:
-                            video_data = f.read()
+                        # ファイルサイズを取得
+                        file_size_mb = os.path.getsize(output_video_path) / (1024 * 1024)
 
-                        st.success(message)
+                        # セッションステートにファイルパスとメタデータを保存
+                        st.session_state['video_file_path'] = output_video_path
+                        st.session_state['video_filename'] = os.path.splitext(video_pptx.name)[0] + "_lecture.mp4"
+                        st.session_state['video_file_size_mb'] = file_size_mb
 
-                        # 動画プレビュー
-                        st.video(video_data)
+                        st.success(f"{message} (ファイルサイズ: {file_size_mb:.1f} MB)")
 
-                        # ダウンロードボタン
-                        video_filename = os.path.splitext(video_pptx.name)[0] + "_lecture.mp4"
-                        st.download_button(
-                            label="💾 講義動画をダウンロード",
-                            data=video_data,
-                            file_name=video_filename,
-                            mime="video/mp4",
-                            use_container_width=True
-                        )
+                        # 大きなファイルの場合は警告
+                        if file_size_mb > 200:
+                            st.warning("⚠️ ファイルサイズが大きいため、ダウンロードに時間がかかる場合があります。")
 
                     else:
                         st.error(f"❌ エラー: {message}")
 
-                    # 一時ファイルを削除
+                    # 入力ファイルのみ削除（出力動画は保持）
                     try:
                         os.unlink(input_pptx_path)
                         os.unlink(input_zip_path)
-                        os.unlink(output_video_path)
                     except:
                         pass
 
@@ -539,6 +534,31 @@ with tab4:
                     st.error(f"❌ 処理中にエラーが発生しました: {str(e)}")
                     import traceback
                     st.code(traceback.format_exc())
+
+    # 動画プレビューとダウンロードボタン（セッションステートから表示）
+    if 'video_file_path' in st.session_state and os.path.exists(st.session_state['video_file_path']):
+        st.divider()
+        st.subheader("📥 生成された講義動画")
+
+        video_path = st.session_state['video_file_path']
+        file_size_mb = st.session_state.get('video_file_size_mb', 0)
+
+        # ファイルサイズ情報を表示
+        st.info(f"📊 ファイルサイズ: {file_size_mb:.1f} MB")
+
+        # 動画プレビュー（ファイルから読み込み）
+        with open(video_path, 'rb') as f:
+            st.video(f.read())
+
+        # ダウンロードボタン（ファイルから読み込み）
+        with open(video_path, 'rb') as f:
+            st.download_button(
+                label="💾 講義動画をダウンロード",
+                data=f.read(),
+                file_name=st.session_state['video_filename'],
+                mime="video/mp4",
+                use_container_width=True
+            )
 
     else:
         if not video_pptx and not video_zip:
