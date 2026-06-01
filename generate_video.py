@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 import wave
 import zipfile
 from pathlib import Path
@@ -108,41 +109,67 @@ class VideoGenerator:
 
         return images
 
-    def text_to_speech(self, text: str, output_path: str) -> str:
+    def text_to_speech(self, text: str, output_path: str, max_retries: int = 3) -> str:
         """
-        Gemini TTSでテキストを音声に変換
+        Gemini TTSでテキストを音声に変換（リトライ処理付き）
 
         Args:
             text: 読み上げるテキスト
             output_path: 出力WAVファイルのパス
+            max_retries: 最大リトライ回数（デフォルト: 3）
 
         Returns:
             str: 出力ファイルのパス
+
+        Raises:
+            Exception: リトライ回数を超えてもAPI呼び出しに失敗した場合
         """
-        response = self.client.models.generate_content(
-            model="gemini-2.5-flash-preview-tts",
-            contents=text,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name="Kore",
-                        )
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                response = self.client.models.generate_content(
+                    model="gemini-2.5-flash-preview-tts",
+                    contents=text,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["AUDIO"],
+                        speech_config=types.SpeechConfig(
+                            voice_config=types.VoiceConfig(
+                                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                    voice_name="Kore",
+                                )
+                            )
+                        ),
                     )
-                ),
-            )
-        )
+                )
 
-        audio_data = response.candidates[0].content.parts[0].inline_data.data
+                audio_data = response.candidates[0].content.parts[0].inline_data.data
 
-        with wave.open(output_path, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(24000)
-            wf.writeframes(audio_data)
+                with wave.open(output_path, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(24000)
+                    wf.writeframes(audio_data)
 
-        return output_path
+                return output_path
+
+            except Exception as e:
+                last_exception = e
+
+                # 最後の試行でない場合はリトライ
+                if attempt < max_retries - 1:
+                    # 指数バックオフ: 2^attempt秒待機（1秒、2秒、4秒...）
+                    wait_time = 2 ** attempt
+                    print(f"API呼び出しエラー (試行 {attempt + 1}/{max_retries}): {str(e)}")
+                    print(f"{wait_time}秒後にリトライします...")
+                    time.sleep(wait_time)
+                else:
+                    # 最後の試行でも失敗した場合
+                    print(f"API呼び出しエラー (試行 {attempt + 1}/{max_retries}): {str(e)}")
+                    print("最大リトライ回数に達しました。")
+
+        # すべてのリトライが失敗した場合
+        raise Exception(f"音声生成に失敗しました（{max_retries}回試行）: {str(last_exception)}")
 
     def create_slide_video(
         self,
